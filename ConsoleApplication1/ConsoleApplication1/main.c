@@ -40,17 +40,17 @@ int P1_7;
 #define shortMinTime 100
 
 // maksymalny czas w ms na krotki znak w alfabecie Morse'a
-#define shortMaxTime 700
+#define shortMaxTime 500
 
 // minimalny czas w ms na dlugi znak w alfabecie Morse'a
-#define longMinTime 700
+#define longMinTime 500
 
 // maksymalny czas w ms na dlugi znak w alfabecie Morse'a
 #define longMaxTime 2000
 
 // stala okreslajaca ile razy musi wykonac sie petla for
 // zeby opoznic program o 1 milisekunde
-#define oneMilisecondConst 1275
+#define oneMilisecondConst 6
 
 // okresla, ile mozemy wyswietlic maksymalnie cfyr
 #define digitsAmount 6
@@ -70,9 +70,17 @@ int P1_7;
 // czasu reakcji na wyswietlaczu 7 segmentowym
 #define displayValueDelay (digitsAmount * displayNumberDelay)
 
+// opoznienie pomiedzy wyswietlaniem cyfr na wyswietlaczu 7 segementowym
+// tez okresla dlugosc wyswietlania jednej cyfry
+#define displayDigitDelay 100
+
 // stala okreslajaca ile czasu wykonywala sie petla,
 // ktora mierzy ile czasu wciskano klawisz aktywacji
 #define loopTimeLength (oneMilisecondConst / 2)
+
+// czas w milisekundach okreslajacy, ile czasu bedzie wyswietlany
+// wynik pomiaru czasu reakcji na wyswietlaczu
+#define displaySymbolTimePeriod 5000
 
 #pragma endregion
 
@@ -165,16 +173,24 @@ const char numbers[numbersAmount][5] = {
 };
 
 // funkcja pauzujaca program
-void delayProgram(unsigned int value) {
-	unsigned int i = 0, j = 0;
-	for (; i < value; i++)
-		for (; j < oneMilisecondConst; j++);	// czas wykonania wewnetrznej petli = 1 ms
+void delayProgram(unsigned long int value) {
+	unsigned long int i = 0;
+
+	// dostosowanie, zeby dla value = 1000, opoznic program o 1000 milisekund
+	// dobrane metoda prob i bledow
+	value *= 0.95;
+
+	// petla opozniajaca
+	for (; i < value * oneMilisecondConst; i++);
 }
+
 
 // wyswietlenie litery/cyfry na wyswietlaczu 7 segemntowym
 // wyswietlanie wyglada tak: L-A / n-9
 // gdzie L/n oznacza "litera"/"muber", A/9 dowolona litere/cyfre
 void display7Seg(char value, char *codeTable, char type) {
+	unsigned int j;
+	char displayTable[3], temp, i;
 
 	// jezeli litera
 	if (value >= 65)
@@ -183,31 +199,43 @@ void display7Seg(char value, char *codeTable, char type) {
 	else
 		value -= 48;
 
-	for (char i = 0; i < 3; i++) {
-
-		XBYTE[0xF030] = i + 1;
-
-		// wyswietlenie litery
+	for (i = 0; i < 3; i++) {
+		// wyswietlenie litery/cyfry
 		if (i == 0)
-			XBYTE[0xF038] = codeTable[value];
+			temp = codeTable[value];
 
 		// wyswietlenie myslnika
 		else if (i == 1)
-			XBYTE[0xF038] = MYSLNIK;
+			temp = MYSLNIK;
 
-		// wyswietlenie duzej litery "L" - typ
+		// wyswietlenie litery "L" / "n" - typ znaku
 		else if (i == 2)
-			XBYTE[0xF038] = type;
+			temp = type;
+
+		displayTable[i] = temp;
+	}
+
+	for (i = 0, j = 0; j < displaySymbolTimePeriod; j++, i++) {
+		i = i % 3;
+
+		XBYTE[0xF030] = 1 << i;
+		XBYTE[0xF038] = displayTable[i];
 
 		display = 0;
 
-		// opoznienie pomiedzy znakami na wyswietlaczu
-		delayProgram(displayNumberDelay);
+		// opoznienie, zeby sie przez chwile wyswietlala dana cyfra na wyswietlaczu
+
+		for (j = 0; j < displayDigitDelay; j++);
 
 		display = 1;
+
+		// opoznienie pomiedzy cyframi na wyswietlaczu
+		for (j = 0; j < displayDigitDelay; j++);
 	}
 }
 
+// NOT TESTED
+//
 // tlumaczy kod w alfabecie Morse'a na literke
 char translateToChar(char code[5]) {
 	char match, characterCode;
@@ -251,6 +279,8 @@ char translateToChar(char code[5]) {
 	return letters[23];
 }
 
+// NOT TESTED
+//
 // tlumaczy litere/cyfre na kod w alfabecie Morse'a
 char * translateToMors(char character, char **codeTable) {
 
@@ -308,6 +338,11 @@ int main() {
 			// czy czas nacisniecia zawiera sie w przedziale czasowym dlugiego znaku
 			if (time >= longMinTime && time < longMaxTime)
 				character[i] = 1;
+
+			// czy czas nisniecia jest dluzszy niz maksymalny czas dlugiego znaku
+			// jezeli tak, to znaczy, ze koniec podawania znaku
+			if (time >= longMaxTime)
+				break;
 		}
 
 
